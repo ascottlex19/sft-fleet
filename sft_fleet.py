@@ -9,22 +9,13 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
-# All Tables - FIXED Vehicles Table
+# Database Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
 CREATE TABLE IF NOT EXISTS vehicles (
-    unit TEXT PRIMARY KEY, 
-    type TEXT, 
-    status TEXT, 
-    vin TEXT, 
-    year INTEGER, 
-    make TEXT, 
-    model TEXT, 
-    mileage INTEGER, 
-    plate_exp DATE, 
-    insurance_exp DATE, 
-    notes TEXT
+    unit TEXT PRIMARY KEY, type TEXT, status TEXT, vin TEXT, year INTEGER, make TEXT, model TEXT, 
+    mileage INTEGER, plate_exp DATE, insurance_exp DATE, notes TEXT
 );
 CREATE TABLE IF NOT EXISTS inventory (part_number TEXT PRIMARY KEY, part_name TEXT, qty INTEGER, unit_cost REAL, retail_price REAL, category TEXT);
 CREATE TABLE IF NOT EXISTS customers (customer_id TEXT PRIMARY KEY, name TEXT, contact TEXT, phone TEXT, email TEXT, vins TEXT);
@@ -80,7 +71,7 @@ menu = st.session_state.menu
 st.title("🚛 SFT SYSTEMS LLC")
 st.caption("Professional Fleet Management System")
 
-# Dashboard
+# Dashboard with Notifications
 if menu == "Dashboard":
     st.header("Dashboard")
     col1, col2, col3 = st.columns(3)
@@ -88,13 +79,25 @@ if menu == "Dashboard":
     col2.metric("Open Repair Orders", c.execute("SELECT COUNT(*) FROM repair_orders WHERE status = 'Open'").fetchone()[0] or 0)
     col3.metric("Unpaid Invoices", c.execute("SELECT COUNT(*) FROM invoices WHERE status = 'Unpaid'").fetchone()[0] or 0)
 
+    st.subheader("⚠️ Expiring Soon (Next 30 Days)")
+    expiring = pd.read_sql("""
+        SELECT unit, type, plate_exp, insurance_exp 
+        FROM vehicles 
+        WHERE plate_exp <= date('now','+30 days') OR insurance_exp <= date('now','+30 days')
+    """, conn)
+    if not expiring.empty:
+        st.warning("Vehicles needing attention:")
+        st.dataframe(expiring)
+    else:
+        st.success("✅ No items expiring soon.")
+
 # Vehicles
 elif menu == "Vehicles":
     st.header("Vehicles - SFT Fleet")
     df = pd.read_sql("SELECT * FROM vehicles", conn)
     st.dataframe(df, use_container_width=True)
 
-    with st.expander("Add New Vehicle"):
+    with st.expander("Add / Edit Vehicle"):
         with st.form("add_vehicle"):
             unit = st.text_input("Unit # *")
             vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"])
@@ -102,8 +105,8 @@ elif menu == "Vehicles":
             year = st.number_input("Year", 2010, 2030, 2025)
             make = st.text_input("Make")
             model = st.text_input("Model")
-            mileage = st.number_input("Current Mileage", 0)
-            plate_exp = st.date_input("License Plate Expiration", date.today())
+            mileage = st.number_input("Mileage", 0)
+            plate_exp = st.date_input("Plate Expiration", date.today())
             insurance_exp = st.date_input("Insurance Expiration", date.today())
             notes = st.text_area("Notes")
             if st.form_submit_button("Save Vehicle"):
@@ -118,16 +121,45 @@ elif menu == "Repair Orders":
     df = pd.read_sql("SELECT * FROM repair_orders", conn)
     st.dataframe(df, use_container_width=True)
 
-    selected = st.selectbox("Select Repair Order to Edit", df['ro_number'].tolist() if not df.empty else [""])
-    if selected:
-        with st.expander("Edit Repair Order"):
+    tab1, tab2 = st.tabs(["New Repair Order", "Edit Existing"])
+
+    with tab1:
+        with st.form("new_ro"):
+            ro_num = st.text_input("RO #", f"RO-{date.today().strftime('%Y%m%d')}")
+            customer = st.text_input("Customer")
+            unit = st.text_input("Unit #")
+            vin = st.text_input("VIN")
+            odometer = st.number_input("Odometer", 0)
+            customer_states = st.text_area("Customer States")
+            labor_hours = st.number_input("Labor Hours", 0.0, step=0.25)
+            st.subheader("Parts")
+            inventory = pd.read_sql("SELECT part_number, unit_cost FROM inventory", conn)
+            total_parts = 0
+            for i in range(5):
+                part = st.selectbox(f"Part {i+1}", [""] + inventory['part_number'].tolist(), key=f"part{i}")
+                if part:
+                    qty = st.number_input("Qty", 1, key=f"qty{i}")
+                    cost = inventory[inventory.part_number == part]['unit_cost'].iloc[0]
+                    total_parts += cost * qty
+            if st.form_submit_button("Create Repair Order"):
+                labor_total = labor_hours * 130
+                shop_supply = min(total_parts * 0.1, 150)
+                total = labor_total + total_parts + shop_supply
+                c.execute("INSERT INTO repair_orders VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                         (ro_num, str(date.today()), customer, unit, vin, odometer, customer_states, "", labor_hours, 130, total_parts, labor_total, shop_supply, total, "Open"))
+                conn.commit()
+                st.success("✅ New Repair Order Created!")
+
+    with tab2:
+        selected = st.selectbox("Select to Edit", df['ro_number'].tolist() if not df.empty else [""])
+        if selected:
             with st.form("edit_ro"):
                 new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
-                new_notes = st.text_area("Diagnostic Notes")
-                if st.form_submit_button("Save Changes"):
+                new_notes = st.text_area("Notes")
+                if st.form_submit_button("Save"):
                     c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected))
                     conn.commit()
-                    st.success("✅ Updated!")
+                    st.success("✅ Saved!")
 
 # Inventory
 elif menu == "Inventory":
@@ -167,12 +199,12 @@ elif menu == "Invoices":
     st.header("Invoices")
     df = pd.read_sql("SELECT * FROM invoices", conn)
     st.dataframe(df, use_container_width=True)
-    with st.expander("Create Invoice"):
+    with st.expander("Create Professional Invoice"):
         with st.form("new_invoice"):
             inv_num = st.text_input("Invoice #", f"INV-{date.today().strftime('%Y%m%d')}")
-            customer = st.text_input("Customer")
-            total = st.number_input("Total $", 0.0)
-            if st.form_submit_button("Create"):
+            customer = st.text_input("Bill To")
+            total = st.number_input("Total Amount $", 0.0)
+            if st.form_submit_button("Create Invoice"):
                 c.execute("INSERT INTO invoices VALUES (?,?,?,?,?,?,?,?)", (inv_num, str(date.today()), "", customer, total, "Unpaid", "Net 30", str(date.today() + timedelta(days=30))))
                 conn.commit()
                 st.success("✅ Invoice Created!")
