@@ -98,19 +98,23 @@ elif menu == "Vehicles":
 elif menu == "Vehicles":
     st.header("🚚 Vehicles - SFT Fleet")
     
+    # Show Current Vehicles
     st.subheader("Vehicle List")
     df = pd.read_sql("SELECT * FROM vehicles", conn)
-    st.dataframe(df, use_container_width=True)
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No vehicles added yet.")
 
     # Add New Vehicle
     st.subheader("Add New Vehicle")
     with st.form("new_vehicle"):
-        unit = st.text_input("Unit # *", key="unit_new")
+        unit = st.text_input("Unit # *")
         vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"])
-        vin = st.text_input("VIN Number", key="vin_new")
+        vin = st.text_input("VIN")
         year = st.number_input("Year", 2010, 2030, 2025)
-        make = st.text_input("Make", key="make_new")
-        model = st.text_input("Model", key="model_new")
+        make = st.text_input("Make")
+        model = st.text_input("Model")
         mileage = st.number_input("Mileage", 0)
         plate_exp = st.date_input("Plate Expiration", date.today())
         insurance_exp = st.date_input("Insurance Expiration", date.today())
@@ -118,28 +122,26 @@ elif menu == "Vehicles":
 
         if st.form_submit_button("Add Vehicle"):
             try:
-                c.execute("""INSERT OR REPLACE INTO vehicles 
-                    (unit, type, status, vin, year, make, model, mileage, plate_exp, insurance_exp, notes) 
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""", 
-                    (unit, vtype, "Active", vin, year, make, model, mileage, plate_exp, insurance_exp, notes))
+                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
+                         (unit, vtype, "Active", vin, year, make, model, mileage, plate_exp, insurance_exp, notes))
                 conn.commit()
                 st.success("✅ Vehicle Added Successfully!")
                 st.rerun()
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"Error adding vehicle: {e}")
 
     # Edit Vehicle
-    st.subheader("Edit Existing Vehicle")
+    st.subheader("Edit Vehicle")
     if not df.empty:
-        selected_unit = st.selectbox("Select Unit to Edit", df['unit'].tolist())
-        if selected_unit:
+        selected = st.selectbox("Select Unit to Edit", df['unit'].tolist())
+        if selected:
             with st.form("edit_vehicle"):
                 status = st.selectbox("Status", ["Active", "Inactive"])
-                notes = st.text_area("Notes", "No notes")
+                notes = st.text_area("Notes", "Update notes here")
                 if st.form_submit_button("Save Changes"):
-                    c.execute("UPDATE vehicles SET status=?, notes=? WHERE unit=?", (status, notes, selected_unit))
+                    c.execute("UPDATE vehicles SET status=?, notes=? WHERE unit=?", (status, notes, selected))
                     conn.commit()
-                    st.success("✅ Changes Saved!")
+                    st.success("✅ Vehicle Updated!")
                     st.rerun()
 # Repair Orders
 elif menu == "Repair Orders":
