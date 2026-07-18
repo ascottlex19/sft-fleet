@@ -14,6 +14,7 @@ os.makedirs("attachments/pdfs", exist_ok=True)
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
+# Fixed Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS vehicles (unit TEXT PRIMARY KEY, type TEXT, status TEXT, vin TEXT, year INTEGER, make TEXT, model TEXT, mileage INTEGER, 
@@ -72,9 +73,8 @@ menu = st.session_state.menu
 # Dashboard
 if menu == "Dashboard":
     st.header("Fleet Overview")
-    c1,c2,c3,c4 = st.columns(4)
     active = c.execute("SELECT COUNT(*) FROM vehicles WHERE status='Active'").fetchone()[0] or 0
-    c1.metric("Active Vehicles", active)
+    st.metric("Active Vehicles", active)
 
 # Vehicles with VIN Lookup
 elif menu == "Vehicles":
@@ -86,8 +86,7 @@ elif menu == "Vehicles":
         with st.form("add_vehicle"):
             unit = st.text_input("Unit # *")
             vin = st.text_input("VIN Number")
-            lookup = st.form_submit_button("🔍 Lookup VIN")
-            if lookup and vin:
+            if st.form_submit_button("🔍 Lookup VIN") and vin:
                 try:
                     r = requests.get(f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/{vin}?format=json", timeout=5)
                     data = r.json()
@@ -97,7 +96,7 @@ elif menu == "Vehicles":
                         if item['Variable'] == "Model" and item['Value']: st.session_state.vin_model = item['Value']
                     st.success("✅ VIN information loaded!")
                 except:
-                    st.warning("Could not lookup VIN. Enter manually.")
+                    st.warning("Could not lookup VIN.")
 
             vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"])
             year = st.number_input("Year", 2010, 2030, st.session_state.get('vin_year', 2025))
@@ -105,22 +104,18 @@ elif menu == "Vehicles":
             model = st.text_input("Model", st.session_state.get('vin_model', "CASCADIA"))
             
             colA, colB = st.columns(2)
-            dot_due = colA.date_input("Annual DOT Inspection Due", date.today())
-            plate_exp = colA.date_input("Plate Expiration", date.today())
-            insurance_exp = colB.date_input("Insurance Expiration", date.today())
-            pm_interval = colB.number_input("PM Service Interval (miles)", value=10000)
-            grease1 = colA.number_input("Grease Job 1 Interval (miles)", value=5000)
-            grease2 = colB.number_input("Grease Job 2 Interval (miles)", value=10000)
+            dot_due = colA.date_input("DOT Due", date.today())
+            plate_exp = colA.date_input("Plate Exp", date.today())
+            insurance_exp = colB.date_input("Insurance Exp", date.today())
+            pm_interval = colB.number_input("PM Interval (miles)", value=10000)
+            grease1 = colA.number_input("Grease 1 Interval", value=5000)
+            grease2 = colB.number_input("Grease 2 Interval", value=10000)
 
             if st.form_submit_button("Save Vehicle"):
-                c.execute("""INSERT OR REPLACE INTO vehicles 
-                    (unit, type, status, vin, year, make, model, mileage, dot_due, plate_exp, insurance_exp, 
-                     pm_interval, grease1_interval, grease2_interval, notes)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (unit, vtype, "Active", vin, year, make, model, 0, dot_due, plate_exp, insurance_exp, 
-                     pm_interval, grease1, grease2, ""))
+                c.execute("""INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (unit, vtype, "Active", vin, year, make, model, 0, dot_due, plate_exp, insurance_exp, pm_interval, grease1, grease2, ""))
                 conn.commit()
-                st.success(f"✅ Vehicle {unit} saved!")
+                st.success(f"Vehicle {unit} saved!")
 
 # Inventory
 elif menu == "Inventory":
@@ -131,15 +126,15 @@ elif menu == "Inventory":
         with st.form("add_part"):
             pn = st.text_input("Part Number")
             name = st.text_input("Part Name")
-            qty = st.number_input("Quantity On Hand", 0)
+            qty = st.number_input("Quantity", 0)
             cost = st.number_input("Unit Cost $", 0.0)
             if st.form_submit_button("Add Part"):
                 retail = round(cost * 1.45, 2)
                 c.execute("INSERT OR REPLACE INTO inventory VALUES (?,?,?,?,?,?)", (pn, name, qty, cost, retail, "General"))
                 conn.commit()
-                st.success("✅ Part added successfully!")
+                st.success("✅ Part added!")
 
-# Customers
+# Customers - FIXED
 elif menu == "Customers":
     st.header("Customers")
     df = pd.read_sql("SELECT * FROM customers", conn)
@@ -148,21 +143,17 @@ elif menu == "Customers":
         with st.form("add_customer"):
             cid = st.text_input("Customer ID")
             name = st.text_input("Customer Name")
+            contact = st.text_input("Contact Person")
             phone = st.text_input("Phone")
             email = st.text_input("Email")
             if st.form_submit_button("Add Customer"):
-                c.execute("INSERT OR REPLACE INTO customers VALUES (?,?,?,?)", (cid, name, phone, email))
+                c.execute("INSERT OR REPLACE INTO customers VALUES (?,?,?,?,?)", (cid, name, contact, phone, email))
                 conn.commit()
                 st.success("✅ Customer added!")
 
-# Purchase Orders & Work Orders (basic)
-elif menu == "Purchase Orders":
-    st.header("Purchase Orders")
-    st.info("Create PO → Mark Received to update inventory (expand later)")
+# Other sections
+elif menu in ["Purchase Orders", "Work Orders"]:
+    st.header(menu)
+    st.info(f"{menu} module is ready for further expansion.")
 
-elif menu == "Work Orders":
-    st.header("Work Orders")
-    st.info("Full Work Order module ready for expansion")
-
-st.sidebar.success(f"👤 {st.session_state.username}")
-st.sidebar.caption("VIN Lookup + Full Features Active")
+st.sidebar.success(f"👤 {st.session_state.get('username', 'User')}")
