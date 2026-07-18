@@ -9,7 +9,7 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
-# Updated Tables
+# All Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
@@ -29,13 +29,13 @@ if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
     c.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", ("labor_rate", 130.0))
     conn.commit()
 
-# Login (same as before)
+# ====================== LOGIN ======================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 def login():
     st.title("🚛 SFT SYSTEMS LLC")
-    st.subheader("Fleet Management System")
+    st.subheader("Fleet & Repair Management System")
     un = st.text_input("Username", "admin")
     pw = st.text_input("Password", "admin123", type="password")
     if st.button("Login", type="primary", use_container_width=True):
@@ -50,7 +50,7 @@ if not st.session_state.logged_in:
     login()
     st.stop()
 
-# Sidebar Navigation
+# ====================== SIDEBAR NAVIGATION ======================
 st.sidebar.title("Navigation")
 if st.sidebar.button("🏠 Dashboard", use_container_width=True): st.session_state.menu = "Dashboard"
 if st.sidebar.button("🚚 Vehicles", use_container_width=True): st.session_state.menu = "Vehicles"
@@ -66,15 +66,16 @@ if 'menu' not in st.session_state:
 menu = st.session_state.menu
 
 st.title("🚛 SFT SYSTEMS LLC")
-st.caption("Professional Fleet Management System")
+st.caption("**Professional Fleet Management & Repair Shop System**")
 
-# Dashboard
+# ====================== DASHBOARD ======================
 if menu == "Dashboard":
-    st.header("Dashboard")
-    col1, col2, col3 = st.columns(3)
+    st.header("Business Dashboard")
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Active Vehicles", "18")
     col2.metric("Open Repair Orders", "4", "🔴")
-    col3.metric("Overdue Invoices", "2", "⚠️")
+    col3.metric("Inventory Value", "$2,847")
+    col4.metric("Monthly Revenue", "$14,250")
 
 # ====================== VEHICLES ======================
 elif menu == "Vehicles":
@@ -90,7 +91,7 @@ elif menu == "Vehicles":
             year = st.number_input("Year", 2010, 2030, 2025)
             make = st.text_input("Make")
             model = st.text_input("Model")
-            mileage = st.number_input("Current Mileage", 0)
+            mileage = st.number_input("Mileage", 0)
             notes = st.text_area("Notes")
             if st.form_submit_button("Save Vehicle"):
                 c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?)", 
@@ -98,7 +99,46 @@ elif menu == "Vehicles":
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
 
-# ====================== CUSTOMERS (with VIN memory) ======================
+# ====================== REPAIR ORDERS ======================
+elif menu == "Repair Orders":
+    st.header("Repair Orders")
+    df = pd.read_sql("SELECT * FROM repair_orders", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("New Repair Order"):
+        with st.form("new_ro"):
+            ro_num = st.text_input("RO #", f"RO-{date.today().strftime('%Y%m%d')}")
+            customer = st.text_input("Customer")
+            unit = st.text_input("Unit #")
+            vin = st.text_input("VIN")
+            odometer = st.number_input("Odometer", 0)
+            customer_states = st.text_area("Customer States")
+            diagnostic_notes = st.text_area("Diagnostic Notes")
+            if st.form_submit_button("Create Repair Order"):
+                c.execute("INSERT INTO repair_orders (ro_number, date, customer, unit, vin, odometer, customer_states, diagnostic_notes, status) VALUES (?,?,?,?,?,?,?,?,?)",
+                         (ro_num, str(date.today()), customer, unit, vin, odometer, customer_states, diagnostic_notes, "Open"))
+                conn.commit()
+                st.success("✅ Repair Order Created!")
+
+# ====================== INVENTORY ======================
+elif menu == "Inventory":
+    st.header("Inventory")
+    df = pd.read_sql("SELECT * FROM inventory", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Add / Edit Part"):
+        with st.form("add_part"):
+            pn = st.text_input("Part Number")
+            name = st.text_input("Part Name")
+            qty = st.number_input("Quantity", 0)
+            cost = st.number_input("Unit Cost $", 0.0)
+            if st.form_submit_button("Save Part"):
+                retail = round(cost * 1.45, 2)
+                c.execute("INSERT OR REPLACE INTO inventory VALUES (?,?,?,?,?,?)", (pn, name, qty, cost, retail, "General"))
+                conn.commit()
+                st.success("✅ Part Saved!")
+
+# ====================== CUSTOMERS ======================
 elif menu == "Customers":
     st.header("Customers")
     df = pd.read_sql("SELECT * FROM customers", conn)
@@ -110,12 +150,37 @@ elif menu == "Customers":
             name = st.text_input("Customer Name")
             phone = st.text_input("Phone")
             email = st.text_input("Email")
-            vin = st.text_input("Last Known VIN (saved for future)")
+            last_vin = st.text_input("Last Known VIN")
             if st.form_submit_button("Save Customer"):
-                c.execute("INSERT OR REPLACE INTO customers VALUES (?,?,?,?,?,?)", (cid, name, "", phone, email, vin))
+                c.execute("INSERT OR REPLACE INTO customers VALUES (?,?,?,?,?,?)", (cid, name, "", phone, email, last_vin))
                 conn.commit()
-                st.success("✅ Customer Saved with VIN!")
+                st.success("✅ Customer Saved!")
 
-# Other sections (Repair Orders, Inventory, Invoices, Settings) remain functional as before...
+# ====================== INVOICES ======================
+elif menu == "Invoices":
+    st.header("Invoices")
+    df = pd.read_sql("SELECT * FROM invoices", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Create Invoice"):
+        with st.form("new_invoice"):
+            inv_num = st.text_input("Invoice #", f"INV-{date.today().strftime('%Y%m%d')}")
+            customer = st.text_input("Customer")
+            total = st.number_input("Total $", 0.0)
+            if st.form_submit_button("Create Invoice"):
+                c.execute("INSERT INTO invoices VALUES (?,?,?,?,?,?,?,?)", (inv_num, str(date.today()), "", customer, total, "Unpaid", "Net 30", str(date.today() + timedelta(days=30))))
+                conn.commit()
+                st.success("Invoice Created!")
+
+# ====================== SETTINGS ======================
+elif menu == "Settings":
+    st.header("Settings")
+    rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
+    current_rate = float(rate_row[0]) if rate_row else 130.0
+    new_rate = st.number_input("Default Labor Rate ($/hr)", value=current_rate, step=5.0)
+    if st.button("Save Labor Rate"):
+        c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
+        conn.commit()
+        st.success(f"✅ Labor Rate updated to ${new_rate}")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
