@@ -100,27 +100,25 @@ elif menu == "Vehicles":
     
     # Vehicle List
     st.subheader("All Vehicles")
-    df = pd.read_sql("SELECT unit, type, status, vin, year, make, model, mileage, plate_exp, insurance_exp FROM vehicles", conn)
+    df = pd.read_sql("SELECT * FROM vehicles", conn)
     st.dataframe(df, use_container_width=True)
 
-    # Edit Existing Vehicle
+    # Edit Vehicle
     if not df.empty:
         st.subheader("Edit Vehicle")
         selected_unit = st.selectbox("Select Unit # to Edit", df['unit'].tolist())
         if selected_unit:
             vehicle = df[df['unit'] == selected_unit].iloc[0]
             with st.form("edit_vehicle"):
-                status = st.selectbox("Status", ["Active", "Inactive"], 
-                                    index=0 if vehicle['status'] == "Active" else 1)
+                status = st.selectbox("Status", ["Active", "Inactive"], index=0 if vehicle.get('status') == "Active" else 1)
                 notes = st.text_area("Notes", value=vehicle.get('notes', ''))
                 if st.form_submit_button("Save Changes"):
-                    c.execute("UPDATE vehicles SET status=?, notes=? WHERE unit=?", 
-                             (status, notes, selected_unit))
+                    c.execute("UPDATE vehicles SET status=?, notes=? WHERE unit=?", (status, notes, selected_unit))
                     conn.commit()
                     st.success("✅ Vehicle Updated!")
                     st.rerun()
 
-    # Add New Vehicle with VIN Lookup
+    # Add New Vehicle
     st.subheader("Add New Vehicle")
     with st.form("new_vehicle"):
         col1, col2 = st.columns(2)
@@ -151,11 +149,14 @@ elif menu == "Vehicles":
         notes = st.text_area("Notes")
 
         if st.form_submit_button("Add New Vehicle"):
-            c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                     (unit, vtype, "Active", vin, year, make, model, engine, mileage, plate_exp, insurance_exp, notes))
-            conn.commit()
-            st.success("✅ New Vehicle Added!")
-            st.rerun()
+            try:
+                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (unit, vtype, "Active", vin, year, make, model, engine, mileage, plate_exp, insurance_exp, notes))
+                conn.commit()
+                st.success("✅ New Vehicle Added!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error adding vehicle: {e}")
 # Repair Orders
 elif menu == "Repair Orders":
     st.header("Repair Orders")
