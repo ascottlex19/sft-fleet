@@ -13,7 +13,8 @@ c = conn.cursor()
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
-CREATE TABLE IF NOT EXISTS vehicles (unit TEXT PRIMARY KEY, type TEXT, status TEXT, vin TEXT, year INTEGER, make TEXT, model TEXT, mileage INTEGER, notes TEXT);
+CREATE TABLE IF NOT EXISTS vehicles (unit TEXT PRIMARY KEY, type TEXT, status TEXT, vin TEXT, year INTEGER, make TEXT, model TEXT, mileage INTEGER, 
+    plate_exp DATE, insurance_exp DATE, notes TEXT);
 CREATE TABLE IF NOT EXISTS inventory (part_number TEXT PRIMARY KEY, part_name TEXT, qty INTEGER, unit_cost REAL, retail_price REAL, category TEXT);
 CREATE TABLE IF NOT EXISTS customers (customer_id TEXT PRIMARY KEY, name TEXT, contact TEXT, phone TEXT, email TEXT, vins TEXT);
 CREATE TABLE IF NOT EXISTS repair_orders (ro_number TEXT PRIMARY KEY, date TEXT, customer TEXT, unit TEXT, vin TEXT, odometer INTEGER, 
@@ -90,46 +91,32 @@ elif menu == "Vehicles":
             year = st.number_input("Year", 2010, 2030, 2025)
             make = st.text_input("Make")
             model = st.text_input("Model")
-            mileage = st.number_input("Mileage", 0)
+            mileage = st.number_input("Current Mileage", 0)
+            plate_exp = st.date_input("Plate Expiration", date.today())
+            insurance_exp = st.date_input("Insurance Expiration", date.today())
             notes = st.text_area("Notes")
             if st.form_submit_button("Save Vehicle"):
-                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?)", (unit, vtype, "Active", vin, year, make, model, mileage, notes))
+                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?)", 
+                         (unit, vtype, "Active", vin, year, make, model, mileage, plate_exp, insurance_exp, notes))
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
 
-# Repair Orders - Create and Edit
+# Repair Orders
 elif menu == "Repair Orders":
     st.header("Repair Orders")
-    df = pd.read_sql("SELECT ro_number, date, customer, unit, status FROM repair_orders", conn)
+    df = pd.read_sql("SELECT * FROM repair_orders", conn)
     st.dataframe(df, use_container_width=True)
 
-    tab1, tab2 = st.tabs(["New Repair Order", "Edit Existing"])
-
-    with tab1:
-        with st.form("new_ro"):
-            ro_num = st.text_input("RO #", f"RO-{date.today().strftime('%Y%m%d')}")
-            customer = st.text_input("Customer Name")
-            unit = st.text_input("Unit #")
-            vin = st.text_input("VIN")
-            odometer = st.number_input("Odometer", 0)
-            customer_states = st.text_area("Customer States")
-            diagnostic_notes = st.text_area("Diagnostic Notes")
-            if st.form_submit_button("Create Repair Order"):
-                c.execute("INSERT INTO repair_orders (ro_number, date, customer, unit, vin, odometer, customer_states, diagnostic_notes, status) VALUES (?,?,?,?,?,?,?,?,?)",
-                         (ro_num, str(date.today()), customer, unit, vin, odometer, customer_states, diagnostic_notes, "Open"))
-                conn.commit()
-                st.success("✅ Repair Order Created!")
-
-    with tab2:
-        selected = st.selectbox("Select Repair Order to Edit", df['ro_number'].tolist() if not df.empty else [""])
-        if selected:
+    selected = st.selectbox("Select Repair Order to Edit", df['ro_number'].tolist() if not df.empty else [""])
+    if selected:
+        with st.expander("Edit Repair Order"):
             with st.form("edit_ro"):
                 new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
-                new_notes = st.text_area("Update Notes")
+                new_notes = st.text_area("Diagnostic Notes")
                 if st.form_submit_button("Save Changes"):
                     c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected))
                     conn.commit()
-                    st.success("✅ Repair Order Updated!")
+                    st.success("✅ Updated!")
 
 # Inventory
 elif menu == "Inventory":
