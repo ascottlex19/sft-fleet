@@ -38,7 +38,7 @@ def login():
     un = st.text_input("Username", "admin")
     pw = st.text_input("Password", "admin123", type="password")
     if st.button("Login", type="primary", use_container_width=True):
-        if un == "admin" and pw == "admin123":
+        if c.execute("SELECT * FROM users WHERE username=? AND password_hash=?", (un, hash_pwd(pw))).fetchone():
             st.session_state.logged_in = True
             st.session_state.username = un
             st.rerun()
@@ -97,7 +97,7 @@ elif menu == "Vehicles":
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
 
-# Repair Orders, Inventory, Customers, Invoices (functional)
+# Repair Orders, Inventory, Customers, Invoices (all functional)
 
 elif menu == "Repair Orders":
     st.header("Repair Orders")
@@ -110,7 +110,7 @@ elif menu == "Repair Orders":
                 c.execute("INSERT INTO repair_orders (ro_number, date, customer, unit, status) VALUES (?,?,?,?,?)", 
                          (ro_num, str(date.today()), customer, unit, "Open"))
                 conn.commit()
-                st.success("Repair Order Created!")
+                st.success("✅ Repair Order Created!")
 
 elif menu == "Inventory":
     st.header("Inventory")
@@ -157,14 +157,42 @@ elif menu == "Invoices":
                 conn.commit()
                 st.success("✅ Invoice Created!")
 
+# Settings with User Management
 elif menu == "Settings":
     st.header("Settings")
-    rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
-    current_rate = float(rate_row[0]) if rate_row else 130.0
-    new_rate = st.number_input("Default Labor Rate ($/hr)", value=current_rate, step=5.0)
-    if st.button("Save Labor Rate"):
-        c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
-        conn.commit()
-        st.success(f"✅ Labor Rate updated to ${new_rate}")
+
+    tab1, tab2 = st.tabs(["Labor Rate", "User Management"])
+
+    with tab1:
+        rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
+        current_rate = float(rate_row[0]) if rate_row else 130.0
+        new_rate = st.number_input("Default Labor Rate ($/hr)", value=current_rate, step=5.0)
+        if st.button("Save Labor Rate"):
+            c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
+            conn.commit()
+            st.success(f"✅ Labor Rate updated to ${new_rate}")
+
+    with tab2:
+        st.subheader("User Management")
+        users_df = pd.read_sql("SELECT username, role FROM users", conn)
+        st.dataframe(users_df, use_container_width=True)
+
+        with st.expander("Add New User"):
+            with st.form("add_user"):
+                new_user = st.text_input("Username")
+                new_pass = st.text_input("Password", type="password")
+                role = st.selectbox("Role", ["Admin", "Mechanic", "Manager"])
+                if st.form_submit_button("Add User"):
+                    c.execute("INSERT OR IGNORE INTO users VALUES (?,?,?,?)", (new_user, hash_pwd(new_pass), role, ""))
+                    conn.commit()
+                    st.success("✅ User Added!")
+
+        with st.expander("Change Password"):
+            with st.form("change_pass"):
+                new_pass = st.text_input("New Password", type="password")
+                if st.form_submit_button("Change Password"):
+                    c.execute("UPDATE users SET password_hash = ? WHERE username = ?", (hash_pwd(new_pass), st.session_state.username))
+                    conn.commit()
+                    st.success("✅ Password Changed!")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
