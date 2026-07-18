@@ -88,7 +88,6 @@ elif menu == "Vehicles":
     df = pd.read_sql("SELECT * FROM vehicles", conn)
     st.dataframe(df, use_container_width=True)
 
-    # Add New Vehicle Button
     if st.button("➕ Add New Vehicle"):
         st.session_state.show_add = True
 
@@ -97,7 +96,7 @@ elif menu == "Vehicles":
         unit = st.text_input("Unit # *")
         vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"])
         vin = st.text_input("VIN Number")
-        if st.button("🔍 Lookup VIN"):
+        if st.button("🔍 Lookup VIN & Auto-Fill"):
             if vin:
                 try:
                     r = requests.get(f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/{vin}?format=json")
@@ -105,12 +104,15 @@ elif menu == "Vehicles":
                     year = next((x['Value'] for x in data if x['Variable'] == "Model Year"), "")
                     make = next((x['Value'] for x in data if x['Variable'] == "Make"), "")
                     model = next((x['Value'] for x in data if x['Variable'] == "Model"), "")
-                    st.success(f"Found: {year} {make}")
+                    st.session_state.vin_year = int(year) if year.isdigit() else 2025
+                    st.session_state.vin_make = make
+                    st.session_state.vin_model = model
+                    st.success(f"✅ Auto-filled: {year} {make} {model}")
                 except:
                     st.error("Lookup failed")
-        year = st.number_input("Year", 2010, 2030, 2025)
-        make = st.text_input("Make")
-        model = st.text_input("Model")
+        year = st.number_input("Year", 2010, 2030, value=st.session_state.get('vin_year', 2025))
+        make = st.text_input("Make", value=st.session_state.get('vin_make', ''))
+        model = st.text_input("Model", value=st.session_state.get('vin_model', ''))
         mileage = st.number_input("Mileage", 0)
         plate_exp = st.date_input("Plate Expiration", date.today())
         insurance_exp = st.date_input("Insurance Expiration", date.today())
@@ -127,7 +129,6 @@ elif menu == "Vehicles":
             st.session_state.show_add = False
             st.rerun()
 
-    # Edit Vehicle
     st.subheader("Edit Vehicle")
     if not df.empty:
         selected_unit = st.selectbox("Select Unit Number to Edit", df['unit'].tolist())
@@ -224,15 +225,49 @@ elif menu == "Invoices":
                 conn.commit()
                 st.success("✅ Invoice Created!")
 
-# Settings
+# Settings (Labor Rate + User Management)
 elif menu == "Settings":
     st.header("Settings")
+    
+    # Labor Rate
+    st.subheader("Labor Rate")
     rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
     current = float(rate_row[0]) if rate_row else 130.0
-    new_rate = st.number_input("Labor Rate ($/hr)", value=current, step=5.0)
+    new_rate = st.number_input("Default Labor Rate ($/hr)", value=current, step=5.0)
     if st.button("Save Labor Rate"):
         c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
         conn.commit()
         st.success(f"✅ Labor Rate updated to ${new_rate}")
+
+    # User Management
+    st.subheader("User Management")
+    users_df = pd.read_sql("SELECT username, role, full_name FROM users", conn)
+    st.dataframe(users_df, use_container_width=True)
+
+    with st.expander("Add New User"):
+        with st.form("add_user"):
+            new_username = st.text_input("Username")
+            new_password = st.text_input("Password", type="password")
+            new_role = st.selectbox("Role", ["Admin", "Manager", "Mechanic"])
+            new_full_name = st.text_input("Full Name")
+            if st.form_submit_button("Create User"):
+                c.execute("INSERT OR IGNORE INTO users VALUES (?,?,?,?)", 
+                         (new_username, hash_pwd(new_password), new_role, new_full_name))
+                conn.commit()
+                st.success("✅ User Created!")
+
+    with st.expander("Change My Password"):
+        with st.form("change_password"):
+            current_pw = st.text_input("Current Password", type="password")
+            new_pw = st.text_input("New Password", type="password")
+            confirm_pw = st.text_input("Confirm New Password", type="password")
+            if st.form_submit_button("Change Password"):
+                if new_pw == confirm_pw:
+                    c.execute("UPDATE users SET password_hash=? WHERE username=?", 
+                             (hash_pwd(new_pw), st.session_state.username))
+                    conn.commit()
+                    st.success("✅ Password Changed!")
+                else:
+                    st.error("Passwords do not match")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
