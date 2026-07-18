@@ -29,13 +29,16 @@ CREATE TABLE IF NOT EXISTS invoices (invoice_number TEXT PRIMARY KEY, date TEXT,
 
 def hash_pwd(p): return hashlib.sha256(p.encode()).hexdigest()
 
+# Default data
 if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
     c.execute("INSERT OR IGNORE INTO users VALUES (?,?,?,?)", ("admin", hash_pwd("admin123"), "Admin", "Administrator"))
     c.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", ("labor_rate", 130.0))
     conn.commit()
 
-# Login (same)
-if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+# Login
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
 def login():
     st.title("🚛 SFT SYSTEMS LLC")
     st.subheader("Fleet Management Login")
@@ -46,7 +49,8 @@ def login():
             st.session_state.logged_in = True
             st.session_state.username = un
             st.rerun()
-        else: st.error("❌ Invalid login")
+        else:
+            st.error("❌ Invalid login")
 
 if not st.session_state.logged_in:
     login()
@@ -69,26 +73,22 @@ menu = st.session_state.menu
 # Settings
 if menu == "Settings":
     st.header("System Settings")
-    current = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()[0]
-    new_rate = st.number_input("Default Labor Rate ($/hr)", value=float(current), step=5.0)
+    rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
+    current_rate = float(rate_row[0]) if rate_row else 130.0
+    new_rate = st.number_input("Default Labor Rate ($/hr)", value=current_rate, step=5.0)
     if st.button("Save Labor Rate"):
-        c.execute("UPDATE settings SET value=? WHERE key='labor_rate'", (new_rate,))
+        c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
         conn.commit()
-        st.success(f"Labor Rate updated to ${new_rate}")
+        st.success(f"✅ Labor Rate updated to ${new_rate}")
 
-# Repair Orders - Improved
+# Repair Orders
 if menu == "Repair Orders":
     st.header("Repair Orders")
     tab1, tab2 = st.tabs(["Open Repair Orders", "New / Edit"])
 
     with tab1:
-        df = pd.read_sql("SELECT * FROM repair_orders WHERE status != 'Completed'", conn)
+        df = pd.read_sql("SELECT ro_number, date, customer, unit, status FROM repair_orders WHERE status != 'Completed'", conn)
         st.dataframe(df, use_container_width=True)
-        ro_to_delete = st.selectbox("Delete Repair Order", [""] + df['ro_number'].tolist() if not df.empty else [])
-        if ro_to_delete and st.button("🗑️ Delete Selected"):
-            c.execute("DELETE FROM repair_orders WHERE ro_number=?", (ro_to_delete,))
-            conn.commit()
-            st.success("Deleted!")
 
     with tab2:
         ro_num = st.text_input("Repair Order #", f"RO-{date.today().strftime('%Y%m%d')}")
@@ -99,14 +99,16 @@ if menu == "Repair Orders":
         customer_states = st.text_area("Customer States")
         diagnostic_notes = st.text_area("Diagnostic Notes")
 
-        labor_rate = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()[0]
+        # Labor Rate from Settings
+        rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
+        labor_rate = float(rate_row[0]) if rate_row else 130.0
         labor_hours = st.number_input("Labor Hours", 0.0, step=0.5)
         labor_total = labor_hours * labor_rate
 
+        # Parts
         st.subheader("Parts")
         inventory = pd.read_sql("SELECT part_number, part_name, unit_cost FROM inventory", conn)
         total_parts = 0.0
-        selected_parts = []
         num_parts = st.number_input("Number of Parts", 1, 8, 3)
         for i in range(num_parts):
             col1, col2 = st.columns([3,1])
@@ -115,7 +117,6 @@ if menu == "Repair Orders":
                 qty = col2.number_input("Qty", 1, key=f"qty{i}")
                 cost = inventory[inventory.part_number == part]['unit_cost'].iloc[0]
                 total_parts += cost * qty
-                selected_parts.append(part)
 
         shop_supply = min(total_parts * 0.10, 150)
         grand_total = labor_total + total_parts + shop_supply
@@ -123,22 +124,25 @@ if menu == "Repair Orders":
         st.write(f"**Labor:** ${labor_total:.2f} | **Parts:** ${total_parts:.2f} | **Shop Supply:** ${shop_supply:.2f}")
         st.write(f"**Grand Total:** ${grand_total:.2f}")
 
-        col1, col2, col3 = st.columns(3)
-        if col1.button("💾 Save"):
-            c.execute("""INSERT OR REPLACE INTO repair_orders VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        col1, col2 = st.columns(2)
+        if col1.button("💾 Save Repair Order"):
+            c.execute("""INSERT OR REPLACE INTO repair_orders 
+                (ro_number, date, customer, unit, vin, odometer, customer_states, diagnostic_notes, 
+                 labor_hours, labor_rate, parts_total, labor_total, shop_supply, total, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (ro_num, str(date.today()), customer, unit, vin, odometer, customer_states, diagnostic_notes,
                  labor_hours, labor_rate, total_parts, labor_total, shop_supply, grand_total, 'Open'))
             conn.commit()
-            st.success("Saved!")
+            st.success("Repair Order Saved!")
 
         if col2.button("✅ Complete to Invoice"):
             inv = f"INV-{date.today().strftime('%Y%m%d')}"
             c.execute("INSERT INTO invoices VALUES (?,?,?,?,?,?)", (inv, str(date.today()), ro_num, customer, grand_total, "Unpaid"))
             c.execute("UPDATE repair_orders SET status='Completed' WHERE ro_number=?", (ro_num,))
             conn.commit()
-            st.success(f"Invoice {inv} created!")
+            st.success(f"Invoice {inv} Created!")
 
-# Invoices with Reverse Button
+# Invoices
 elif menu == "Invoices":
     st.header("SFT SYSTEMS LLC")
     st.subheader("9811 West State Rd 2, La Porte, IN 46350")
@@ -146,10 +150,10 @@ elif menu == "Invoices":
     df = pd.read_sql("SELECT * FROM invoices", conn)
     st.dataframe(df, use_container_width=True)
 
-    inv_to_reverse = st.selectbox("Reverse Invoice Status", df['invoice_number'].tolist() if not df.empty else [])
-    if inv_to_reverse and st.button("🔄 Reverse Status"):
-        c.execute("UPDATE invoices SET status='Reversed' WHERE invoice_number=?", (inv_to_reverse,))
+    inv = st.selectbox("Reverse Invoice", df['invoice_number'].tolist() if not df.empty else [])
+    if inv and st.button("🔄 Reverse Status"):
+        c.execute("UPDATE invoices SET status='Reversed' WHERE invoice_number=?", (inv,))
         conn.commit()
-        st.success("Invoice status reversed!")
+        st.success("Invoice reversed!")
 
 st.sidebar.success(f"👤 {st.session_state.username}")
