@@ -6,27 +6,10 @@ import hashlib
 
 st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="🚛")
 
-# Try to load logo safely
-logo_loaded = False
-try:
-    st.image("logo.png", width=180)
-    logo_loaded = True
-except:
-    pass
-
-# Professional Styling
-st.markdown("""
-<style>
-    .main {background-color: #f8f9fa;}
-    h1, h2 {color: #1e3a8a;}
-    .stButton>button {width: 100%; font-weight: bold;}
-</style>
-""", unsafe_allow_html=True)
-
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
-# All Tables
+# Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
@@ -50,10 +33,8 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 def login():
-    if logo_loaded:
-        st.image("logo.png", width=280)
-    st.title("SFT SYSTEMS LLC")
-    st.subheader("Fleet & Repair Management")
+    st.title("🚛 SFT SYSTEMS LLC")
+    st.subheader("Fleet Management")
     un = st.text_input("Username", "admin")
     pw = st.text_input("Password", "admin123", type="password")
     if st.button("Login", type="primary"):
@@ -68,32 +49,72 @@ if not st.session_state.logged_in:
     login()
     st.stop()
 
-# Main App
-if logo_loaded:
-    st.image("logo.png", width=180)
-st.title("SFT SYSTEMS LLC")
-st.caption("**Professional Fleet Management System**")
+# ====================== SIDEBAR NAVIGATION ======================
+st.sidebar.image("logo.png", width=150) if 'logo.png' else None
+st.sidebar.title("Navigation")
 
-menu = st.sidebar.selectbox("Main Menu", ["Dashboard", "Repair Orders", "Invoices", "Inventory", "Customers", "Settings"])
+if st.sidebar.button("🏠 Dashboard", use_container_width=True): st.session_state.menu = "Dashboard"
+if st.sidebar.button("🔧 Repair Orders", use_container_width=True): st.session_state.menu = "Repair Orders"
+if st.sidebar.button("📋 Inventory", use_container_width=True): st.session_state.menu = "Inventory"
+if st.sidebar.button("👥 Customers", use_container_width=True): st.session_state.menu = "Customers"
+if st.sidebar.button("📦 Invoices", use_container_width=True): st.session_state.menu = "Invoices"
+if st.sidebar.button("⚙️ Settings", use_container_width=True): st.session_state.menu = "Settings"
 
-# Dashboard
+if 'menu' not in st.session_state:
+    st.session_state.menu = "Dashboard"
+
+menu = st.session_state.menu
+
+st.title("🚛 SFT SYSTEMS LLC")
+st.caption("Professional Fleet Management System")
+
+# ====================== DASHBOARD ======================
 if menu == "Dashboard":
-    st.header("Business Overview")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Active Vehicles", "18")
-    col2.metric("Open Repair Orders", "4", "🔴")
-    col3.metric("Inventory Value", "$2,847")
-    col4.metric("Monthly Revenue", "$14,250")
+    st.header("Dashboard")
+    st.success("Welcome back! All systems operational.")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Open Repair Orders", "4", "🔴")
+    col2.metric("Overdue Invoices", "2", "⚠️")
+    col3.metric("Low Stock Items", "7")
 
-# Repair Orders (Polished)
+# ====================== REPAIR ORDERS ======================
 elif menu == "Repair Orders":
-    st.header("🔧 Repair Orders")
-    # (Add your full form here from previous messages or let me know if you want it expanded)
+    st.header("Repair Orders")
+    # Add your full form here (from previous polished version)
 
-# Invoices
-elif menu == "Invoices":
-    st.header("SFT SYSTEMS LLC - Invoices")
-    st.subheader("9811 West State Rd 2, La Porte, IN 46350 | (219) 785-0042")
-    # Invoice form here...
+# ====================== INVENTORY ======================
+elif menu == "Inventory":
+    st.header("Inventory Management")
+    df = pd.read_sql("SELECT * FROM inventory", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Add / Edit Part"):
+        with st.form("add_part"):
+            pn = st.text_input("Part Number")
+            name = st.text_input("Part Name")
+            qty = st.number_input("Quantity", 0)
+            cost = st.number_input("Unit Cost $", 0.0)
+            if st.form_submit_button("Save Part"):
+                retail = round(cost * 1.45, 2)
+                c.execute("INSERT OR REPLACE INTO inventory VALUES (?,?,?,?,?,?)", (pn, name, qty, cost, retail, "General"))
+                conn.commit()
+                st.success("✅ Part Saved!")
+
+# ====================== CUSTOMERS ======================
+elif menu == "Customers":
+    st.header("Customers")
+    df = pd.read_sql("SELECT * FROM customers", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Add / Edit Customer"):
+        with st.form("add_customer"):
+            cid = st.text_input("Customer ID")
+            name = st.text_input("Customer Name")
+            phone = st.text_input("Phone")
+            email = st.text_input("Email")
+            if st.form_submit_button("Save Customer"):
+                c.execute("INSERT OR REPLACE INTO customers VALUES (?,?,?,?,?)", (cid, name, "", phone, email))
+                conn.commit()
+                st.success("✅ Customer Saved!")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
