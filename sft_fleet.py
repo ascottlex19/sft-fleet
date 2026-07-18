@@ -91,7 +91,6 @@ if menu == "Dashboard":
     else:
         st.success("✅ No items expiring soon.")
 
-# ==================== VEHICLES SECTION ====================
 elif menu == "Vehicles":
     st.header("🚚 Vehicles - SFT Fleet")
     
