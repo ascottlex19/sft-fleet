@@ -10,7 +10,6 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
-# All Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
@@ -124,15 +123,15 @@ elif menu == "Vehicles":
                 st.session_state.show_add = False
                 st.rerun()
 
-    # Edit Vehicle - Click Unit Number
+    # Edit by clicking Unit Number
     st.subheader("Edit Vehicle")
     if not df.empty:
-        selected_unit = st.selectbox("Select Unit Number to Edit", df['unit'].tolist())
+        selected_unit = st.selectbox("Select Unit Number from List to Edit", df['unit'].tolist())
         if selected_unit:
             vehicle = df[df['unit'] == selected_unit].iloc[0]
             with st.expander(f"Editing Unit: {selected_unit}", expanded=True):
                 with st.form("edit_vehicle"):
-                    vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"], index=["Semi Truck", "Dry Van Trailer", "Reefer Trailer"].index(vehicle.get('type', 'Semi Truck')))
+                    vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"], index=0)
                     vin = st.text_input("VIN", value=vehicle.get('vin', ''))
                     year = st.number_input("Year", 2010, 2030, value=int(vehicle.get('year', 2025)))
                     make = st.text_input("Make", value=vehicle.get('make', ''))
