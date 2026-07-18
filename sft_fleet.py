@@ -124,7 +124,7 @@ elif menu == "Vehicles":
                 st.session_state.show_add = False
                 st.rerun()
 
-    # Edit Vehicle
+    # Edit Vehicle - Click Unit Number
     st.subheader("Edit Vehicle")
     if not df.empty:
         selected_unit = st.selectbox("Select Unit Number to Edit", df['unit'].tolist())
@@ -132,7 +132,7 @@ elif menu == "Vehicles":
             vehicle = df[df['unit'] == selected_unit].iloc[0]
             with st.expander(f"Editing Unit: {selected_unit}", expanded=True):
                 with st.form("edit_vehicle"):
-                    vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"], index=0)
+                    vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"], index=["Semi Truck", "Dry Van Trailer", "Reefer Trailer"].index(vehicle.get('type', 'Semi Truck')))
                     vin = st.text_input("VIN", value=vehicle.get('vin', ''))
                     year = st.number_input("Year", 2010, 2030, value=int(vehicle.get('year', 2025)))
                     make = st.text_input("Make", value=vehicle.get('make', ''))
