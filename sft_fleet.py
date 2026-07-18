@@ -9,12 +9,23 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
-# All Tables
+# All Tables - FIXED Vehicles Table
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
-CREATE TABLE IF NOT EXISTS vehicles (unit TEXT PRIMARY KEY, type TEXT, status TEXT, vin TEXT, year INTEGER, make TEXT, model TEXT, mileage INTEGER, 
-    plate_exp DATE, insurance_exp DATE, notes TEXT);
+CREATE TABLE IF NOT EXISTS vehicles (
+    unit TEXT PRIMARY KEY, 
+    type TEXT, 
+    status TEXT, 
+    vin TEXT, 
+    year INTEGER, 
+    make TEXT, 
+    model TEXT, 
+    mileage INTEGER, 
+    plate_exp DATE, 
+    insurance_exp DATE, 
+    notes TEXT
+);
 CREATE TABLE IF NOT EXISTS inventory (part_number TEXT PRIMARY KEY, part_name TEXT, qty INTEGER, unit_cost REAL, retail_price REAL, category TEXT);
 CREATE TABLE IF NOT EXISTS customers (customer_id TEXT PRIMARY KEY, name TEXT, contact TEXT, phone TEXT, email TEXT, vins TEXT);
 CREATE TABLE IF NOT EXISTS repair_orders (ro_number TEXT PRIMARY KEY, date TEXT, customer TEXT, unit TEXT, vin TEXT, odometer INTEGER, 
@@ -92,11 +103,11 @@ elif menu == "Vehicles":
             make = st.text_input("Make")
             model = st.text_input("Model")
             mileage = st.number_input("Current Mileage", 0)
-            plate_exp = st.date_input("Plate Expiration", date.today())
+            plate_exp = st.date_input("License Plate Expiration", date.today())
             insurance_exp = st.date_input("Insurance Expiration", date.today())
             notes = st.text_area("Notes")
             if st.form_submit_button("Save Vehicle"):
-                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?)", 
+                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
                          (unit, vtype, "Active", vin, year, make, model, mileage, plate_exp, insurance_exp, notes))
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
