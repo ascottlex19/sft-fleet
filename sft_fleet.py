@@ -94,6 +94,10 @@ if menu == "Dashboard":
 elif menu == "Vehicles":
     st.header("🚚 Vehicles - SFT Fleet")
     
+# ==================== VEHICLES SECTION ====================
+elif menu == "Vehicles":
+    st.header("🚚 Vehicles - SFT Fleet")
+    
     # Vehicle List
     st.subheader("All Vehicles")
     df = pd.read_sql("SELECT unit, type, status, vin, year, make, model, mileage, plate_exp, insurance_exp FROM vehicles", conn)
