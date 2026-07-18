@@ -3,10 +3,6 @@ import pandas as pd
 from datetime import date, timedelta
 import sqlite3
 import hashlib
-import io
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
 
 st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="🚛")
 
@@ -81,7 +77,7 @@ if menu == "Dashboard":
 
 # Vehicles
 elif menu == "Vehicles":
-    st.header("Vehicles - SFT Fleet")
+    st.header("Vehicles")
     df = pd.read_sql("SELECT * FROM vehicles", conn)
     st.dataframe(df, use_container_width=True)
 
@@ -100,29 +96,50 @@ elif menu == "Vehicles":
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
 
-# Repair Orders
+# Repair Orders - Full Parts Addition
 elif menu == "Repair Orders":
     st.header("Repair Orders")
     df = pd.read_sql("SELECT * FROM repair_orders", conn)
     st.dataframe(df, use_container_width=True)
 
-    selected = st.selectbox("Select Repair Order to Edit", df['ro_number'].tolist() if not df.empty else [""])
-    if selected:
-        with st.expander("Edit Repair Order"):
-            with st.form("edit_ro"):
-                new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
-                new_notes = st.text_area("Diagnostic Notes")
-                if st.form_submit_button("Save Changes"):
-                    c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected))
-                    conn.commit()
-                    st.success("✅ Updated!")
+    selected_ro = st.selectbox("Select Repair Order to Work On", df['ro_number'].tolist() if not df.empty else [""])
+    if selected_ro:
+        st.subheader(f"Working on {selected_ro}")
+        with st.form("edit_ro"):
+            labor_hours = st.number_input("Labor Hours", 0.0, step=0.25)
+            labor_rate = 130.0
+            labor_total = labor_hours * labor_rate
 
-# Inventory with PDF Export
+            st.subheader("Add Parts")
+            inventory = pd.read_sql("SELECT part_number, part_name, unit_cost FROM inventory", conn)
+            total_parts = 0.0
+            for i in range(5):
+                col1, col2 = st.columns([3,1])
+                part = col1.selectbox(f"Part {i+1}", [""] + inventory['part_number'].tolist(), key=f"part{i}")
+                if part:
+                    qty = col2.number_input("Qty", 1, key=f"qty{i}")
+                    cost = inventory[inventory['part_number'] == part]['unit_cost'].iloc[0]
+                    total_parts += cost * qty
+
+            shop_supply = min(total_parts * 0.10, 150.0)
+            grand_total = labor_total + total_parts + shop_supply
+
+            st.write(f"**Labor Total:** ${labor_total:.2f}")
+            st.write(f"**Parts Total:** ${total_parts:.2f}")
+            st.write(f"**Shop Supply:** ${shop_supply:.2f}")
+            st.write(f"**Grand Total:** ${grand_total:.2f}")
+
+            if st.form_submit_button("Save & Update Repair Order"):
+                c.execute("UPDATE repair_orders SET labor_hours=?, labor_rate=?, parts_total=?, labor_total=?, shop_supply=?, total=? WHERE ro_number=?", 
+                         (labor_hours, labor_rate, total_parts, labor_total, shop_supply, grand_total, selected_ro))
+                conn.commit()
+                st.success("✅ Repair Order Updated!")
+
+# Inventory
 elif menu == "Inventory":
     st.header("Inventory")
     df = pd.read_sql("SELECT * FROM inventory", conn)
     st.dataframe(df, use_container_width=True)
-
     with st.expander("Add Part"):
         with st.form("add_part"):
             pn = st.text_input("Part Number")
@@ -134,21 +151,6 @@ elif menu == "Inventory":
                 c.execute("INSERT OR REPLACE INTO inventory VALUES (?,?,?,?,?,?)", (pn, name, qty, cost, retail, "General"))
                 conn.commit()
                 st.success("✅ Part Saved!")
-
-    if st.button("📄 Export Inventory to PDF"):
-        buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=letter)
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(1*inch, 10*inch, "SFT SYSTEMS LLC - Inventory List")
-        p.setFont("Helvetica", 12)
-        p.drawString(1*inch, 9.7*inch, "9811 West State Rd 2, La Porte, IN 46350")
-        y = 9*inch
-        for _, row in df.iterrows():
-            p.drawString(1*inch, y, f"{row['part_number']} - {row['part_name']} | Qty: {row['qty']} | Cost: ${row['unit_cost']}")
-            y -= 0.3*inch
-        p.save()
-        buffer.seek(0)
-        st.download_button("Download Inventory PDF", buffer, "inventory.pdf", "application/pdf")
 
 # Customers
 elif menu == "Customers":
@@ -166,32 +168,21 @@ elif menu == "Customers":
                 conn.commit()
                 st.success("✅ Customer Saved!")
 
-# Invoices - Professional
+# Invoices
 elif menu == "Invoices":
-    st.header("SFT SYSTEMS LLC - Invoices")
-    st.subheader("9811 West State Rd 2, La Porte, IN 46350 | (219) 785-0042")
+    st.header("Invoices")
     df = pd.read_sql("SELECT * FROM invoices", conn)
     st.dataframe(df, use_container_width=True)
 
-    with st.expander("Create Professional Invoice"):
-        inv_num = st.text_input("Invoice #", f"INV-{date.today().strftime('%Y%m%d')}")
-        customer = st.text_input("Bill To")
-        total = st.number_input("Total Amount $", 0.0)
-        terms = st.selectbox("Payment Terms", ["Due on Receipt", "Net 15", "Net 30"])
-        if st.button("Generate PDF Invoice"):
-            buffer = io.BytesIO()
-            p = canvas.Canvas(buffer, pagesize=letter)
-            p.setFont("Helvetica-Bold", 20)
-            p.drawString(1*inch, 10*inch, "SFT SYSTEMS LLC")
-            p.setFont("Helvetica", 12)
-            p.drawString(1*inch, 9.7*inch, "9811 West State Rd 2, La Porte, IN 46350")
-            p.drawString(1*inch, 9.4*inch, "Phone: 219-785-0042")
-            p.drawString(1*inch, 8.5*inch, f"Invoice #: {inv_num}")
-            p.drawString(1*inch, 8*inch, f"Bill To: {customer}")
-            p.drawString(1*inch, 7*inch, f"Total Due: ${total:,.2f}")
-            p.drawString(1*inch, 6.5*inch, f"Terms: {terms}")
-            p.save()
-            buffer.seek(0)
-            st.download_button("📥 Download Professional Invoice PDF", buffer, f"{inv_num}.pdf", "application/pdf")
+# Settings
+elif menu == "Settings":
+    st.header("Settings")
+    rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
+    current = float(rate_row[0]) if rate_row else 130.0
+    new_rate = st.number_input("Labor Rate ($/hr)", value=current, step=5.0)
+    if st.button("Save Labor Rate"):
+        c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
+        conn.commit()
+        st.success(f"✅ Labor Rate updated to ${new_rate}")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
