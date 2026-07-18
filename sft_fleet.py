@@ -96,20 +96,21 @@ elif menu == "Vehicles":
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
 
-# Repair Orders
+# Repair Orders - Click to Open & Edit
 elif menu == "Repair Orders":
     st.header("Repair Orders")
-    df = pd.read_sql("SELECT * FROM repair_orders", conn)
+    df = pd.read_sql("SELECT ro_number, date, customer, unit, status FROM repair_orders WHERE status != 'Completed'", conn)
     st.dataframe(df, use_container_width=True)
 
-    selected = st.selectbox("Select Repair Order to Open/Edit", df['ro_number'].tolist() if not df.empty else [""])
-    if selected:
-        st.subheader(f"Editing: {selected}")
+    st.subheader("Open & Edit Repair Order")
+    selected_ro = st.selectbox("Select Repair Order", df['ro_number'].tolist() if not df.empty else [""])
+    if selected_ro:
+        st.write(f"**Editing:** {selected_ro}")
         with st.form("edit_ro"):
             new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
-            new_notes = st.text_area("Diagnostic Notes")
+            new_notes = st.text_area("Update Diagnostic Notes")
             if st.form_submit_button("Save Changes"):
-                c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected))
+                c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected_ro))
                 conn.commit()
                 st.success("✅ Repair Order Updated!")
                 st.rerun()
@@ -119,7 +120,7 @@ elif menu == "Inventory":
     st.header("Inventory")
     df = pd.read_sql("SELECT * FROM inventory", conn)
     st.dataframe(df, use_container_width=True)
-    with st.expander("Add / Edit Part"):
+    with st.expander("Add Part"):
         with st.form("add_part"):
             pn = st.text_input("Part Number")
             name = st.text_input("Part Name")
