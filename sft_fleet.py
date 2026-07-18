@@ -10,13 +10,29 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
+# Force correct Vehicles table structure
+c.execute("DROP TABLE IF EXISTS vehicles")
+c.execute('''
+CREATE TABLE vehicles (
+    unit TEXT PRIMARY KEY, 
+    type TEXT, 
+    status TEXT, 
+    vin TEXT, 
+    year INTEGER, 
+    make TEXT, 
+    model TEXT, 
+    mileage INTEGER, 
+    plate_exp DATE, 
+    insurance_exp DATE, 
+    notes TEXT
+)
+''')
+conn.commit()
+
+# Other tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
-CREATE TABLE IF NOT EXISTS vehicles (
-    unit TEXT PRIMARY KEY, type TEXT, status TEXT, vin TEXT, year INTEGER, make TEXT, model TEXT, 
-    mileage INTEGER, plate_exp DATE, insurance_exp DATE, notes TEXT
-);
 CREATE TABLE IF NOT EXISTS inventory (part_number TEXT PRIMARY KEY, part_name TEXT, qty INTEGER, unit_cost REAL, retail_price REAL, category TEXT);
 CREATE TABLE IF NOT EXISTS customers (customer_id TEXT PRIMARY KEY, name TEXT, contact TEXT, phone TEXT, email TEXT, vins TEXT);
 CREATE TABLE IF NOT EXISTS repair_orders (ro_number TEXT PRIMARY KEY, date TEXT, customer TEXT, unit TEXT, vin TEXT, odometer INTEGER, 
@@ -171,7 +187,7 @@ elif menu == "Repair Orders":
         with st.expander("Edit Repair Order"):
             with st.form("edit_ro"):
                 new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
-                new_notes = st.text_area("Diagnostic Notes")
+                nouotes = st.text_area("Diagnostic Notes")
                 if st.form_submit_button("Save Changes"):
                     c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected))
                     conn.commit()
@@ -225,49 +241,15 @@ elif menu == "Invoices":
                 conn.commit()
                 st.success("✅ Invoice Created!")
 
-# Settings (Labor Rate + User Management)
+# Settings
 elif menu == "Settings":
     st.header("Settings")
-    
-    # Labor Rate
-    st.subheader("Labor Rate")
     rate_row = c.execute("SELECT value FROM settings WHERE key='labor_rate'").fetchone()
     current = float(rate_row[0]) if rate_row else 130.0
-    new_rate = st.number_input("Default Labor Rate ($/hr)", value=current, step=5.0)
+    new_rate = st.number_input("Labor Rate ($/hr)", value=current, step=5.0)
     if st.button("Save Labor Rate"):
         c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("labor_rate", new_rate))
         conn.commit()
         st.success(f"✅ Labor Rate updated to ${new_rate}")
-
-    # User Management
-    st.subheader("User Management")
-    users_df = pd.read_sql("SELECT username, role, full_name FROM users", conn)
-    st.dataframe(users_df, use_container_width=True)
-
-    with st.expander("Add New User"):
-        with st.form("add_user"):
-            new_username = st.text_input("Username")
-            new_password = st.text_input("Password", type="password")
-            new_role = st.selectbox("Role", ["Admin", "Manager", "Mechanic"])
-            new_full_name = st.text_input("Full Name")
-            if st.form_submit_button("Create User"):
-                c.execute("INSERT OR IGNORE INTO users VALUES (?,?,?,?)", 
-                         (new_username, hash_pwd(new_password), new_role, new_full_name))
-                conn.commit()
-                st.success("✅ User Created!")
-
-    with st.expander("Change My Password"):
-        with st.form("change_password"):
-            current_pw = st.text_input("Current Password", type="password")
-            new_pw = st.text_input("New Password", type="password")
-            confirm_pw = st.text_input("Confirm New Password", type="password")
-            if st.form_submit_button("Change Password"):
-                if new_pw == confirm_pw:
-                    c.execute("UPDATE users SET password_hash=? WHERE username=?", 
-                             (hash_pwd(new_pw), st.session_state.username))
-                    conn.commit()
-                    st.success("✅ Password Changed!")
-                else:
-                    st.error("Passwords do not match")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
