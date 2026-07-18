@@ -91,30 +91,68 @@ if menu == "Dashboard":
     else:
         st.success("✅ No items expiring soon.")
 
-# Vehicles
+# ==================== VEHICLES SECTION ====================
 elif menu == "Vehicles":
-    st.header("Vehicles - SFT Fleet")
-    df = pd.read_sql("SELECT * FROM vehicles", conn)
+    st.header("🚚 Vehicles - SFT Fleet")
+    
+    # Vehicle List
+    st.subheader("All Vehicles")
+    df = pd.read_sql("SELECT unit, type, status, vin, year, make, model, mileage, plate_exp, insurance_exp FROM vehicles", conn)
     st.dataframe(df, use_container_width=True)
 
-    with st.expander("Add / Edit Vehicle"):
-        with st.form("add_vehicle"):
-            unit = st.text_input("Unit # *")
-            vtype = st.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"])
-            vin = st.text_input("VIN")
-            year = st.number_input("Year", 2010, 2030, 2025)
-            make = st.text_input("Make")
-            model = st.text_input("Model")
-            mileage = st.number_input("Mileage", 0)
-            plate_exp = st.date_input("Plate Expiration", date.today())
-            insurance_exp = st.date_input("Insurance Expiration", date.today())
-            notes = st.text_area("Notes")
-            if st.form_submit_button("Save Vehicle"):
-                c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
-                         (unit, vtype, "Active", vin, year, make, model, mileage, plate_exp, insurance_exp, notes))
-                conn.commit()
-                st.success("✅ Vehicle Saved!")
+    # Edit Existing Vehicle
+    if not df.empty:
+        st.subheader("Edit Vehicle")
+        selected_unit = st.selectbox("Select Unit # to Edit", df['unit'].tolist())
+        if selected_unit:
+            vehicle = df[df['unit'] == selected_unit].iloc[0]
+            with st.form("edit_vehicle"):
+                status = st.selectbox("Status", ["Active", "Inactive"], 
+                                    index=0 if vehicle['status'] == "Active" else 1)
+                notes = st.text_area("Notes", value=vehicle.get('notes', ''))
+                if st.form_submit_button("Save Changes"):
+                    c.execute("UPDATE vehicles SET status=?, notes=? WHERE unit=?", 
+                             (status, notes, selected_unit))
+                    conn.commit()
+                    st.success("✅ Vehicle Updated!")
+                    st.rerun()
 
+    # Add New Vehicle with VIN Lookup
+    st.subheader("Add New Vehicle")
+    with st.form("new_vehicle"):
+        col1, col2 = st.columns(2)
+        unit = col1.text_input("Unit # *")
+        vtype = col2.selectbox("Type", ["Semi Truck", "Dry Van Trailer", "Reefer Trailer"])
+
+        vin = st.text_input("VIN Number")
+        if st.button("🔍 Lookup VIN"):
+            if vin:
+                try:
+                    r = requests.get(f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/{vin}?format=json")
+                    data = r.json()['Results']
+                    year = next((x['Value'] for x in data if x['Variable'] == "Model Year"), "")
+                    make = next((x['Value'] for x in data if x['Variable'] == "Make"), "")
+                    model = next((x['Value'] for x in data if x['Variable'] == "Model"), "")
+                    engine = next((x['Value'] for x in data if x['Variable'] == "Engine Model"), "")
+                    st.success(f"✅ Found: {year} {make} {model}")
+                except:
+                    st.error("VIN lookup failed. Enter manually.")
+
+        year = st.number_input("Year", 2010, 2030, 2025)
+        make = st.text_input("Make")
+        model = st.text_input("Model")
+        engine = st.text_input("Engine")
+        mileage = st.number_input("Mileage", 0)
+        plate_exp = st.date_input("License Plate Expiration", date.today())
+        insurance_exp = st.date_input("Insurance Expiration", date.today())
+        notes = st.text_area("Notes")
+
+        if st.form_submit_button("Add New Vehicle"):
+            c.execute("INSERT OR REPLACE INTO vehicles VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                     (unit, vtype, "Active", vin, year, make, model, engine, mileage, plate_exp, insurance_exp, notes))
+            conn.commit()
+            st.success("✅ New Vehicle Added!")
+            st.rerun()
 # Repair Orders
 elif menu == "Repair Orders":
     st.header("Repair Orders")
