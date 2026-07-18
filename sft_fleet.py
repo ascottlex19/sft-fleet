@@ -9,7 +9,6 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
-# All Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
@@ -119,6 +118,56 @@ elif menu == "Repair Orders":
                 conn.commit()
                 st.success("✅ Repair Order Created!")
 
-# Inventory, Customers, Invoices, Settings (same functional code as before)
+# Inventory
+elif menu == "Inventory":
+    st.header("Inventory")
+    df = pd.read_sql("SELECT * FROM inventory", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Add / Edit Part"):
+        with st.form("add_part"):
+            pn = st.text_input("Part Number")
+            name = st.text_input("Part Name")
+            qty = st.number_input("Quantity", 0)
+            cost = st.number_input("Unit Cost $", 0.0)
+            if st.form_submit_button("Save Part"):
+                retail = round(cost * 1.45, 2)
+                c.execute("INSERT OR REPLACE INTO inventory VALUES (?,?,?,?,?,?)", (pn, name, qty, cost, retail, "General"))
+                conn.commit()
+                st.success("✅ Part Saved!")
+
+# Customers
+elif menu == "Customers":
+    st.header("Customers")
+    df = pd.read_sql("SELECT * FROM customers", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Add / Edit Customer"):
+        with st.form("add_customer"):
+            cid = st.text_input("Customer ID")
+            name = st.text_input("Customer Name")
+            phone = st.text_input("Phone")
+            email = st.text_input("Email")
+            last_vin = st.text_input("Last Known VIN")
+            if st.form_submit_button("Save Customer"):
+                c.execute("INSERT OR REPLACE INTO customers VALUES (?,?,?,?,?,?)", (cid, name, "", phone, email, last_vin))
+                conn.commit()
+                st.success("✅ Customer Saved!")
+
+# Invoices
+elif menu == "Invoices":
+    st.header("Invoices")
+    df = pd.read_sql("SELECT * FROM invoices", conn)
+    st.dataframe(df, use_container_width=True)
+
+    with st.expander("Create Invoice"):
+        with st.form("new_invoice"):
+            inv_num = st.text_input("Invoice #", f"INV-{date.today().strftime('%Y%m%d')}")
+            customer = st.text_input("Customer")
+            total = st.number_input("Total $", 0.0)
+            if st.form_submit_button("Create Invoice"):
+                c.execute("INSERT INTO invoices VALUES (?,?,?,?,?,?,?,?)", (inv_num, str(date.today()), "", customer, total, "Unpaid", "Net 30", str(date.today() + timedelta(days=30))))
+                conn.commit()
+                st.success("✅ Invoice Created!")
 
 st.sidebar.success(f"Logged in as: {st.session_state.username}")
