@@ -9,6 +9,7 @@ st.set_page_config(page_title="SFT Fleet Management", layout="wide", page_icon="
 conn = sqlite3.connect('sft_fleet.db', check_same_thread=False)
 c = conn.cursor()
 
+# All Tables
 c.executescript('''
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT, role TEXT, full_name TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL);
@@ -96,24 +97,39 @@ elif menu == "Vehicles":
                 conn.commit()
                 st.success("✅ Vehicle Saved!")
 
-# Repair Orders - Click to Open & Edit
+# Repair Orders - Create and Edit
 elif menu == "Repair Orders":
     st.header("Repair Orders")
-    df = pd.read_sql("SELECT ro_number, date, customer, unit, status FROM repair_orders WHERE status != 'Completed'", conn)
+    df = pd.read_sql("SELECT ro_number, date, customer, unit, status FROM repair_orders", conn)
     st.dataframe(df, use_container_width=True)
 
-    st.subheader("Open & Edit Repair Order")
-    selected_ro = st.selectbox("Select Repair Order", df['ro_number'].tolist() if not df.empty else [""])
-    if selected_ro:
-        st.write(f"**Editing:** {selected_ro}")
-        with st.form("edit_ro"):
-            new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
-            new_notes = st.text_area("Update Diagnostic Notes")
-            if st.form_submit_button("Save Changes"):
-                c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected_ro))
+    tab1, tab2 = st.tabs(["New Repair Order", "Edit Existing"])
+
+    with tab1:
+        with st.form("new_ro"):
+            ro_num = st.text_input("RO #", f"RO-{date.today().strftime('%Y%m%d')}")
+            customer = st.text_input("Customer Name")
+            unit = st.text_input("Unit #")
+            vin = st.text_input("VIN")
+            odometer = st.number_input("Odometer", 0)
+            customer_states = st.text_area("Customer States")
+            diagnostic_notes = st.text_area("Diagnostic Notes")
+            if st.form_submit_button("Create Repair Order"):
+                c.execute("INSERT INTO repair_orders (ro_number, date, customer, unit, vin, odometer, customer_states, diagnostic_notes, status) VALUES (?,?,?,?,?,?,?,?,?)",
+                         (ro_num, str(date.today()), customer, unit, vin, odometer, customer_states, diagnostic_notes, "Open"))
                 conn.commit()
-                st.success("✅ Repair Order Updated!")
-                st.rerun()
+                st.success("✅ Repair Order Created!")
+
+    with tab2:
+        selected = st.selectbox("Select Repair Order to Edit", df['ro_number'].tolist() if not df.empty else [""])
+        if selected:
+            with st.form("edit_ro"):
+                new_status = st.selectbox("Status", ["Open", "In Progress", "Completed"])
+                new_notes = st.text_area("Update Notes")
+                if st.form_submit_button("Save Changes"):
+                    c.execute("UPDATE repair_orders SET status=?, diagnostic_notes=? WHERE ro_number=?", (new_status, new_notes, selected))
+                    conn.commit()
+                    st.success("✅ Repair Order Updated!")
 
 # Inventory
 elif menu == "Inventory":
